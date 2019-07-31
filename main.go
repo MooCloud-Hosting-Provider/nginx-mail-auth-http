@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"nginx-mail-auth-http/types"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
-
-	"github.com/urlund/nginx-mail-auth-http/types"
 )
 
 func debugConfig(p interface{}) {
@@ -24,6 +24,13 @@ func handleResponse(w http.ResponseWriter, r *http.Request, message string) {
 	if message == "OK" {
 		if r.Header.Get("Auth-Method") == "cram-md5" {
 			w.Header().Add("Auth-Pass", "plain-text-pass")
+		}
+	}
+
+	if debug {
+		b, err := json.MarshalIndent(w.Header(), "", "  ")
+		if err == nil {
+			log.Println("Sending response, headers: " + string(b))
 		}
 	}
 }
@@ -96,6 +103,56 @@ func getAuthServerAndPort(w http.ResponseWriter, r *http.Request, domain string)
 	return ""
 }
 
+func handleMailProxyAuth(w http.ResponseWriter, r *http.Request) {
+	if authKey != "" && r.Header.Get(authHeader) != authKey {
+		if debug {
+			log.Println("Invalid auth key")
+		}
+		handleResponse(w, r, "invalid auth key, check your configuration")
+		return
+	}
+
+	user := r.Header.Get("Auth-User")
+	if user == "" || r.Header.Get("Auth-Pass") == "" {
+		if debug {
+			log.Println("Username or password are missing")
+		}
+		handleResponse(w, r, "username and password are required")
+		return
+	}
+
+	// validate user as email address
+	re := regexp.MustCompile("(.+)@(.+\\..+)")
+	if re.Match([]byte(user)) == false {
+		if debug {
+			log.Println("Invalid email address: " + user)
+		}
+		handleResponse(w, r, "please use a valid email address")
+		return
+	}
+
+	// user parts consist of [email, name, domain]
+	userParts := re.FindStringSubmatch(user)
+	if len(userParts) != 3 {
+		if debug {
+			log.Println("Invalid email address: " + user)
+		}
+		handleResponse(w, r, "invalid email address")
+		return
+	}
+
+	// get domain proxy server and port
+	err := getAuthServerAndPort(w, r, userParts[2])
+	if err != "" {
+		log.Println(err)
+		handleResponse(w, r, err)
+		return
+	}
+
+	// ...
+	handleResponse(w, r, "OK")
+}
+
 func main() {
 	// cleanup expired cache entries
 	go func() {
@@ -111,43 +168,9 @@ func main() {
 	}()
 
 	// handle mail proxy auth
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if authKey != "" && r.Header.Get(authHeader) != authKey {
-			handleResponse(w, r, "invalid auth key, check your configuration")
-			return
-		}
-
-		user := r.Header.Get("Auth-User")
-		if user == "" || r.Header.Get("Auth-Pass") == "" {
-			handleResponse(w, r, "username and password are required")
-			return
-		}
-
-		// validate user as email address
-		re := regexp.MustCompile("(.+)@(.+\\..+)")
-		if re.Match([]byte(user)) == false {
-			handleResponse(w, r, "please use a valid email address")
-			return
-		}
-
-		// user parts consist of [email, name, domain]
-		userParts := re.FindStringSubmatch(user)
-		if len(userParts) != 3 {
-			handleResponse(w, r, "invalid email address")
-			return
-		}
-
-		// get domain proxy server and port
-		err := getAuthServerAndPort(w, r, userParts[2])
-		if err != "" {
-			handleResponse(w, r, err)
-			return
-		}
-
-		// ...
-		handleResponse(w, r, "OK")
-	})
+	http.HandleFunc("/", handleMailProxyAuth)
 
 	// start (keep things running)
-	http.ListenAndServe(listen, nil)
+	log.Println("Starting server, listening on " + listen)
+	log.Println(http.ListenAndServe(listen, nil))
 }

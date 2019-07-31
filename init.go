@@ -3,14 +3,13 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
+	"log"
+	"nginx-mail-auth-http/types"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/urlund/nginx-mail-auth-http/types"
 )
 
 var (
@@ -22,6 +21,7 @@ var (
 	authKey          string
 	authHeader       string
 	version          bool
+	debug            bool
 	config           types.Config
 	proxyConfigCache map[string]types.ProxyConfig
 	timeout          time.Duration
@@ -41,11 +41,12 @@ func init() {
 	flag.StringVar(&configPath, "config-path", "/etc/nginx-mail-auth-http", "Path where '-config-file' (and conf.d) can be found")
 	flag.StringVar(&authKey, "auth-key", "", "This header can be used as the shared secret to verify that the request comes from nginx")
 	flag.StringVar(&authHeader, "auth-header", "Auth-Key", "Checks the specified header in requests sent to the authentication server")
-	flag.BoolVar(&version, "version", version, "Show version")
+	flag.BoolVar(&version, "version", version, "Show version and exit")
+	flag.BoolVar(&debug, "debug", debug, "Print debug logging")
 	flag.Parse()
 
 	if version {
-		fmt.Println("version: 1.0.1")
+		log.Println("version: 1.0.1")
 		os.Exit(0)
 	}
 
