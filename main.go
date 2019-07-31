@@ -18,6 +18,13 @@ func debugConfig(p interface{}) {
 	fmt.Println(string(x))
 }
 
+func debugHeaders(headers http.Header) {
+	b, err := json.MarshalIndent(headers, "", "  ")
+	if err == nil {
+		log.Println(string(b))
+	}
+}
+
 func handleResponse(w http.ResponseWriter, r *http.Request, message string) {
 	w.Header().Add("Auth-Status", message)
 
@@ -28,10 +35,8 @@ func handleResponse(w http.ResponseWriter, r *http.Request, message string) {
 	}
 
 	if debug {
-		b, err := json.MarshalIndent(w.Header(), "", "  ")
-		if err == nil {
-			log.Println("Sending response, headers: " + string(b))
-		}
+		log.Println("Sending response, headers:")
+		debugHeaders(w.Header())
 	}
 }
 
@@ -104,6 +109,10 @@ func getAuthServerAndPort(w http.ResponseWriter, r *http.Request, domain string)
 }
 
 func handleMailProxyAuth(w http.ResponseWriter, r *http.Request) {
+	if debug {
+		log.Println("Received request, headers:")
+		debugHeaders(r.Header)
+	}
 	if authKey != "" && r.Header.Get(authHeader) != authKey {
 		if debug {
 			log.Println("Invalid auth key")
